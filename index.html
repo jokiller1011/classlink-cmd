@@ -62,39 +62,73 @@
             line-height: 1.5;
         }
 
-        .verification-box {
+        .verification-area {
             background: #f8f9fa;
             border-radius: 15px;
-            padding: 30px;
+            padding: 40px 30px;
             margin: 25px 0;
             border: 2px dashed #e9ecef;
-            transition: all 0.3s ease;
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
         }
 
-        .verification-box:hover {
-            border-color: #667eea;
-            background: #f0f2ff;
+        .verification-area.loading {
+            background: #f0f7ff;
+        }
+
+        .verification-area.error {
+            border-color: #ff4757;
+            background: #fff5f5;
         }
 
         .turnstile-container {
+            width: 100%;
             display: flex;
             justify-content: center;
-            margin: 20px 0;
+            min-height: 85px;
+        }
+
+        .fallback-message {
+            display: none;
+            text-align: center;
+            color: #666;
+        }
+
+        .fallback-message.show {
+            display: block;
+        }
+
+        .retry-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .retry-button:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
         }
 
         .status-message {
             padding: 15px;
             border-radius: 10px;
-            margin: 20px 0;
+            margin: 15px 0;
             font-weight: 500;
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: translateY(10px);
+            display: none;
         }
 
         .status-message.show {
-            opacity: 1;
-            transform: translateY(0);
+            display: block;
+            animation: fadeIn 0.5s ease;
         }
 
         .success {
@@ -103,13 +137,13 @@
             border: 1px solid #c3e6cb;
         }
 
-        .error {
+        .error-message {
             background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
 
-        .loading {
+        .loading-message {
             background: #d1ecf1;
             color: #0c5460;
             border: 1px solid #bee5eb;
@@ -153,15 +187,24 @@
             opacity: 1;
         }
 
-        /* Animation for success checkmark */
-        @keyframes checkmark {
-            0% { transform: scale(0); opacity: 0; }
-            50% { transform: scale(1.2); }
-            100% { transform: scale(1); opacity: 1; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .checkmark {
-            animation: checkmark 0.5s ease-in-out;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
         }
 
         /* Responsive design */
@@ -175,19 +218,9 @@
                 font-size: 24px;
             }
             
-            .verification-box {
-                padding: 20px;
+            .verification-area {
+                padding: 30px 20px;
             }
-        }
-
-        /* Button-like styling for the widget */
-        .cf-turnstile iframe {
-            border-radius: 8px !important;
-        }
-
-        /* Smooth transitions */
-        * {
-            transition: all 0.2s ease;
         }
     </style>
 </head>
@@ -198,27 +231,34 @@
         </div>
         
         <h1>Human Verification Required</h1>
-        <p class="subtitle">Please complete the verification to access our GitHub repository. This helps us prevent automated access.</p>
+        <p class="subtitle">Please complete the verification to access our GitHub repository.</p>
         
-        <div class="verification-box">
-            <div class="turnstile-container" id="turnstile-widget"></div>
-            
-            <div id="loading" class="status-message loading">
-                ⏳ Verifying... Please wait
+        <div class="verification-area" id="verificationArea">
+            <div class="turnstile-container" id="turnstileContainer">
+                <div class="spinner" id="loadingSpinner"></div>
             </div>
             
-            <div id="success" class="status-message success">
-                <span class="checkmark">✅</span> Verification Successful! Redirecting...
+            <div class="fallback-message" id="fallbackMessage">
+                <p>⚠️ Having trouble loading the verification?</p>
+                <button class="retry-button" onclick="initializeTurnstile()">Retry Verification</button>
             </div>
-            
-            <div id="error" class="status-message error">
-                ❌ Verification failed. Please try again.
-            </div>
+        </div>
+
+        <div class="status-message loading-message" id="loadingMessage">
+            ⏳ Verifying... Please wait
+        </div>
+        
+        <div class="status-message success" id="successMessage">
+            ✅ Verification Successful! Redirecting...
+        </div>
+        
+        <div class="status-message error-message" id="errorMessage">
+            ❌ Verification failed. Please try again.
         </div>
 
         <div class="github-info">
             <h3>Redirecting to</h3>
-            <p id="github-url">https://jokiller1011.github.io/ixlplay</p>
+            <p id="github-url">https://github.com/yourusername/your-repo</p>
         </div>
 
         <div class="footer">
@@ -232,18 +272,24 @@
 
     <script>
         // Your GitHub repository URL
-        const GITHUB_REPO_URL = "https://github.com/yourusername/your-repo";
+        const GITHUB_REPO_URL = "https://jokiller1011.github.io/ixlplay";
+        
+        // Demo sitekey (replace with your actual Cloudflare Turnstile sitekey)
+        // For testing, you can use Cloudflare's demo keys:
+        const SITE_KEY = '0x4AAAAAAB3nK0mSaNSdFLlb'; // Demo sitekey
+        // Get your real key from: https://dash.cloudflare.com/?to=/:account/turnstile
         
         // Update the displayed URL
         document.getElementById('github-url').textContent = GITHUB_REPO_URL;
         
         function showElement(id) {
+            // Hide all status messages first
             document.querySelectorAll('.status-message').forEach(el => {
                 el.classList.remove('show');
             });
             const element = document.getElementById(id);
             if (element) {
-                setTimeout(() => element.classList.add('show'), 10);
+                element.classList.add('show');
             }
         }
         
@@ -253,57 +299,126 @@
             });
         }
         
-        // Render Turnstile widget
-        function renderTurnstile() {
-            turnstile.render('#turnstile-widget', {
-                sitekey: 0x4AAAAAAB3nK0mSaNSdFLlb', // Replace with your actual sitekey
-                callback: function(token) {
-                    showElement('loading');
-                    verifyToken(token);
-                },
-                'error-callback': function() {
-                    showElement('error');
-                    setTimeout(() => {
-                        hideAllMessages();
-                        turnstile.reset();
-                    }, 3000);
-                },
-                'timeout-callback': function() {
-                    showElement('error');
-                    setTimeout(() => {
-                        hideAllMessages();
-                        turnstile.reset();
-                    }, 3000);
-                }
-            });
+        function showFallback() {
+            const fallback = document.getElementById('fallbackMessage');
+            const spinner = document.getElementById('loadingSpinner');
+            const verificationArea = document.getElementById('verificationArea');
+            
+            if (spinner) spinner.style.display = 'none';
+            fallback.classList.add('show');
+            verificationArea.classList.add('error');
         }
         
-        // Verify the token
-        async function verifyToken(token) {
+        function hideFallback() {
+            const fallback = document.getElementById('fallbackMessage');
+            const verificationArea = document.getElementById('verificationArea');
+            
+            fallback.classList.remove('show');
+            verificationArea.classList.remove('error');
+        }
+        
+        // Initialize Turnstile
+        function initializeTurnstile() {
+            hideFallback();
+            hideAllMessages();
+            
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) spinner.style.display = 'block';
+            
+            // Clear previous widget
+            const container = document.getElementById('turnstileContainer');
+            container.innerHTML = '<div class="spinner" id="loadingSpinner"></div>';
+            
+            // Check if turnstile is available
+            if (typeof turnstile === 'undefined') {
+                console.error('Turnstile script failed to load');
+                showFallback();
+                return;
+            }
+            
             try {
-                // Simulate verification delay
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Render Turnstile widget
+                turnstile.render('#turnstileContainer', {
+                    sitekey: SITE_KEY,
+                    theme: 'light',
+                    size: 'normal',
+                    callback: function(token) {
+                        const spinner = document.getElementById('loadingSpinner');
+                        if (spinner) spinner.style.display = 'none';
+                        showElement('loadingMessage');
+                        verifyToken(token);
+                    },
+                    'error-callback': function() {
+                        showElement('errorMessage');
+                        showFallback();
+                    },
+                    'timeout-callback': function() {
+                        showElement('errorMessage');
+                        showFallback();
+                    }
+                });
                 
-                showElement('success');
-                
-                // Wait 2 seconds then redirect
+                // Hide spinner after widget loads
                 setTimeout(() => {
-                    window.location.href = GITHUB_REPO_URL;
+                    const spinner = document.getElementById('loadingSpinner');
+                    if (spinner) spinner.style.display = 'none';
                 }, 2000);
                 
             } catch (error) {
-                showElement('error');
+                console.error('Error rendering Turnstile:', error);
+                showFallback();
+            }
+        }
+        
+        // Verify the token (simulated for demo)
+        async function verifyToken(token) {
+            try {
+                // Simulate API call delay
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // For demo purposes, we'll always succeed
+                // In production, you'd validate the token with your backend
+                const isValid = true; // Simulated validation
+                
+                if (isValid) {
+                    showElement('successMessage');
+                    
+                    // Wait 2 seconds then redirect
+                    setTimeout(() => {
+                        window.location.href = GITHUB_REPO_URL;
+                    }, 2000);
+                } else {
+                    throw new Error('Invalid token');
+                }
+                
+            } catch (error) {
+                console.error('Verification error:', error);
+                showElement('errorMessage');
                 setTimeout(() => {
                     hideAllMessages();
-                    turnstile.reset();
+                    initializeTurnstile(); // Reset for retry
                 }, 3000);
             }
         }
         
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(renderTurnstile, 500); // Small delay for better UX
+            setTimeout(initializeTurnstile, 1000);
         });
+        
+        // Fallback: if Turnstile doesn't load in 5 seconds
+        setTimeout(() => {
+            if (!window.turnstileLoaded) {
+                showFallback();
+            }
+        }, 5000);
+        
+        // Mark as loaded when Turnstile is ready
+        if (typeof turnstile !== 'undefined') {
+            turnstile.ready(function() {
+                window.turnstileLoaded = true;
+            });
+        }
     </script>
 </body>
 </html>
